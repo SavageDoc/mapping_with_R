@@ -1,0 +1,362 @@
+---
+title: "Maps with R"
+subtitle: "Static, Dynamic, and Mapped"
+author: 'Craig "Doc" Savage'
+logo: "./img/Doc_SS_Black-01.png"
+format: 
+  revealjs:
+    css: logo.css
+    smaller: true
+    embed-resources: true
+    slide-number: c/t
+    show-slide-number: all
+    incremental: true
+execute: 
+  warning: false
+  error: false
+  message: false
+highlight-style: arrow
+---
+
+```{r setup, include=FALSE}
+library( tidyverse )
+library( leaflet )
+library( leafpop )
+library( absmapsdata )
+library( sf )
+library( readxl )
+library( lubridate )
+library( gganimate )
+```
+
+# Introduction
+
+## Geography {.incremental}
+
+::: {.columns}
+
+::: {.column width="47.5%"}
+
+Maps depend on an underlying geographic standard    
+- Government boundaries (e.g., Country, State)    
+
+- Electoral boundaries    
+
+- Postcode    
+
+- Statistical Areas    
+
+:::
+
+::: {.column width="5%"}
+
+:::
+
+::: {.column width="47.5%"}
+
+![Geography structures used by the ABS.](asgsGeography.png){height=75%, width=75%}
+
+:::
+
+:::
+
+## Data
+
+![Weekly Payroll Jobs and Wages in Australia - Payroll Jobs Indexes by Sub-state regions, from the Australian Bureau of Statistics.](jobsDataSS.png)
+
+## Data Wrangling
+
+Jobs and Wages data from the Australian Bureau of Statistics
+
+```{r dataLoadSA4, echo=TRUE, cache=TRUE}
+#| code-line-numbers: "1-4|6|7|8|9-13|14-15|16-17|19-20|22-26|22|23-25"
+excelFile <- './jobsOct2022.xlsx'
+rawData_SA4 <- read_excel( path=excelFile
+                      , sheet='SA4'
+                      , skip=5 )
+
+sa4Data <- rawData_SA4 %>%
+  rename( State=`State or Territory` ) %>%
+  filter( grepl( x=State, pattern='VIC' ) ) %>%
+  separate( `Statistical Area Level 4`, into=c('sa4_code_2021','sa4_name_2021')
+            , sep = '. '
+            , extra='merge'
+            , fill='warn'
+            , convert = TRUE) %>%
+  pivot_longer( cols=-(1:3), names_to='Date', values_to='Index'
+                , names_transform=list( Date=as.numeric ) ) %>%
+  mutate( Date=as.Date( Date, origin=ymd(18991230) )
+          , Index=as.numeric( Index ) )
+
+sa4Geo <- absmapsdata::sa42021 %>% 
+  mutate( sa4_code_2021 = as.integer( sa4_code_2021 ) )
+
+lastSA4Geo <- sa4Geo %>%
+  inner_join( sa4Data %>% 
+                filter( Date == max( Date ) ) %>%
+                select( sa4_code_2021, Index, Date )
+              , by='sa4_code_2021' )
+```
+## Wrangled Data
+
+```{r dataShowSA4, echo=TRUE}
+#| dependson: "dataLoadSA4"
+head( lastSA4Geo )
+```
+
+<!-- Do the same data wrangling process with SA3 data -->
+```{r dataLoadSA3, echo=FALSE, warning=FALSE, cache=TRUE}
+rawData_SA3 <- read_excel( path=excelFile
+                           , sheet='SA3'
+                           , skip=5 )
+
+sa3Data <- rawData_SA3 %>%
+  rename( State=`State or Territory` ) %>%
+  filter( grepl( x=State, pattern='VIC' ) ) %>%
+  # Note we'll separate both SA4 and SA3
+  separate( `Statistical Area Level 4`, into=c('sa4_code_2021','sa4_name_2021')
+            , sep = '. '
+            , extra='merge'
+            , fill='warn'
+            , convert = TRUE) %>%
+  separate( `Statistical Area Level 3`, into=c('sa3_code_2021','sa3_name_2021')
+            , sep = '. '
+            , extra='merge'
+            , fill='warn'
+            , convert = TRUE) %>%
+  pivot_longer( cols=-(1:5), names_to='Date', values_to='Index'
+                , names_transform=list( Date=as.numeric ) ) %>%
+  mutate( Date=as.Date( Date, origin=ymd(18991230) )
+          , Index=as.numeric( Index ) )
+
+lastSA3 <- sa3Data %>% filter( Date == max( Date ) )
+
+sa3Geo <- absmapsdata::sa32021 %>% 
+  mutate( sa4_code_2021 = as.integer( sa4_code_2021 )
+          , sa3_code_2021 = as.integer( sa3_code_2021 ) )
+
+lastSA3Geo <- sa3Geo %>%
+  inner_join( lastSA3 %>% select( sa3_code_2021
+                                  , Index )
+              , by='sa3_code_2021' )
+```
+
+# Static
+
+> Because sometimes, your stakeholders want PDF
+
+## Static maps with `ggplot`
+
+Use of `geom_sf` with simple feature (**sf**) objects, such as those provided by `absmapsdata`.
+
+```{r staticMap, echo=TRUE}
+#| code-line-numbers: "1|2|3|4|5-6|8"
+#| output-location: column-fragment
+staticMap <- ggplot( lastSA4Geo ) +
+  geom_sf( aes( fill=Index ) ) +
+  theme_void() +
+  scale_fill_distiller( palette='YlOrBr' ) +
+  labs( title='Jobs Wage Index by SA4'
+        , subtitle=paste( 'As at', max( lastSA4Geo$Date ) ) )
+
+staticMap
+```
+
+# Dynamic {.incremental}
+
+> Time for fun!
+
+## Dynamic plots with `leaflet`
+
+HTML-based, interactive plots with `leaflet` R-package as an interface to `leaflet.js`.
+
+```{r leafletCode, echo=TRUE}
+#| output-location: slide
+#| code-line-numbers: "1-3|5|6-7|8|9-10|12-14|16"
+leafPal <- colorNumeric( 'YlOrBr'
+                         , domain=lastSA4Geo$Index
+                         , reverse=TRUE )
+
+sa4Map <- leaflet( data=lastSA4Geo ) %>%
+  addPolygons( color='black'
+               , weight=1
+               , label=~paste( sa4_name_2021, ':', round( Index,1) )
+               , fillColor=~leafPal( Index )
+               , fillOpacity=0.5
+  ) %>%
+  addLegend( position='bottomright'
+             , pal=leafPal
+             , values=lastSA4Geo$Index ) 
+
+sa4Map
+```
+
+## Provider Tiles
+
+```{r leafletProvider, echo=TRUE}
+sa4Map %>% addProviderTiles( 'CartoDB.Positron' )
+```
+
+## Provider Tiles
+
+```{r leafletProvider2, echo=TRUE}
+sa4Map %>% addProviderTiles( 'Esri.WorldImagery' )
+```
+
+
+# Mapped
+
+## Making maps with `map`
+
+<!-- Unfortunately, the maps-in-your-map trick doesn't seem to play well with Quarto.
+
+BUT - you should be able to run the prior code chunks (and then this one)
+to get the desired output. See the README file in the GitHub repo! -->
+
+```{r mapFunction, eval=FALSE, echo=TRUE, fig.keep='all'}
+#| code-line-numbers: "1-22|2|4-6|8-19|21|24-26|28|29|31-43|38"
+makeSA3Map <- function( sa4Code, sa3Data ){
+  sa3_in_sa4 <- sa3Data %>% filter( sa4_code_2021 == sa4Code )
+
+    sa3Pal <- colorNumeric( 'viridis'
+                          , domain=c(95,115)
+                          , reverse=TRUE )
+  
+    sa3Map <- leaflet( data=sa3_in_sa4 ) %>%
+      addProviderTiles( 'CartoDB.Positron' ) %>%
+      addPolygons( color='black'
+                     , weight=1
+                   , label=~paste( sa3_name_2021, ':', round( Index, 1 ) )
+                   , fillColor=~sa3Pal( Index )
+                   , fillOpacity=0.5
+      ) %>%
+  addLegend( position='bottomright'
+             , pal=sa3Pal
+             , values=c(95,115)
+             )
+    
+    return( sa3Map )
+}
+
+mapPal <- colorNumeric( 'viridis'
+                         , domain=c(95,115)
+                         , reverse=TRUE )
+
+sa4Codes <- lastSA3Geo %>% distinct( sa4_code_2021 ) %>% pull()
+sa3MapList <- map( sa4Codes, makeSA3Map, sa3Data=lastSA3Geo )
+
+sa4MappedMap <- leaflet( data=lastSA4Geo ) %>%
+  addProviderTiles( 'CartoDB.Positron' ) %>%
+  addPolygons( color='black'
+               , weight=1
+               , label=~paste( sa4_name_2021, ':', round( Index,1) )
+               , fillColor=~mapPal( Index )
+               , fillOpacity=0.5
+               , popup=popupGraph( sa3MapList, type='html' )
+  ) %>%
+    addLegend( position='bottomright'
+             , pal=mapPal
+             , values=c(95,115)
+             )
+
+
+sa4MappedMap
+```
+
+## Mapped map
+
+![Example of an embedded map: SA3 as a division of SA4.](./mapnmap.png)
+
+# Conclusions
+> What have you learned?
+
+## Rationale 
+
+Requirements:    
+
+* Data visualisation presentation    
+
+  - Maps was my choice due to my experience with them
+
+* 15-20 minutes  
+
+  - Limited time to discuss configurations    
+
+* Stakeholders unknown    
+
+  - I have to guess what interests you
+
+## Rationale: `ggplot`
+
+- Often the first data visualisation tool when learning R.        
+
+- Useful for PPT, Word, PDF, ...   
+
+- Baseline for going to `leaflet`
+
+## Rationale: `leaflet`
+
+![Source: "Find out how your neighbours voted in the Victorian election – and the suburbs that swung", `theage.com.au`](leafletReference.png)
+
+## Rationale: `map`
+
+![No presentation is complete without a meme!](mapMeme.jpg)
+
+
+## Caveat: Too efficient  {.scrollable}
+
+```{r manyMaps, echo=TRUE}
+#| output-location: slide
+#| code-line-numbers: "1-4|6-17|19-20|21"
+fullSA4Geo <- sa4Geo %>%
+  inner_join( sa4Data %>% select( sa4_code_2021, Date, Index )
+              , by='sa4_code_2021'
+              , multiple='all' )
+
+makeDateMap <- function( mapDate, sa4Data ){
+  mapData <- sa4Data %>% filter( Date == mapDate )
+  
+  dateMap <- ggplot( mapData ) +
+    geom_sf( aes( fill=Index ) ) +
+    scale_fill_distiller( palette='YlOrBr' 
+                           , limits=c(85, 115) ) +
+    theme_void() +
+    labs( title=paste('Map as of:', mapDate ) ) 
+  
+  return( dateMap )
+}
+
+manyMaps <- map( unique( sa4Data$Date ) %>% sort()
+                    , makeDateMap, sa4Data=fullSA4Geo )
+manyMaps
+```
+
+## Caveat: Animated
+
+```{r animatedPlots, cache=TRUE}
+aniPlot <- ggplot( fullSA4Geo ) + 
+  geom_sf( aes( fill=Index ) ) + 
+  labs( title='Jobs Index: {frame_time}' ) + 
+  scale_fill_distiller( palette='YlOrBr' 
+                           , limits=c(85, 115) ) +
+  transition_time( Date ) + 
+  theme_void()
+
+aniPlot %>% animate( fps=4 ) 
+```
+
+# Finale {.incremental}
+
+> What does it mean to work in data visualisation?
+
+## Contact
+
+- [LinkedIn](https://www.linkedin.com/in/craig-doc-savage): https://www.linkedin.com/in/craig-doc-savage
+
+- [YouTube](https://www.youtube.com/c/craigsavage): https://www.youtube.com/c/craigsavage
+
+- [GitHub](https://github.com/SavageDoc/mapping_with_R): https://github.com/SavageDoc/mapping_with_R
+
+# Thank you!
+
+# Questions?

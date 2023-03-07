@@ -1,0 +1,23 @@
+
+.reveal .slide-logo {
+  height: 250px !important;
+  width: 250px!important;
+  max-width: unset !important;
+  max-height: unset !important;
+}
+
+/*  Code cell sizing - 
+used .smaller tag instead */
+
+/*
+.reveal .cell-code {
+  height: 550px;
+  width: 750px;
+}
+
+.reveal pre.sourceCode code {
+	height: 600px;
+	width: 800px;
+}
+*/
+
