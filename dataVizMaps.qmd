@@ -31,20 +31,55 @@ library( gganimate )
 
 # Introduction
 
-## Geography {.incremental}
+<!--- 
+The live presentation included a bunch of personal photos summarising my professional journey.
+I haven't included them in the GitHub repo because the Internet is weird.
+
+If you've found this repo, I'm assuming you know who I am. If not, come say g'day on LinkedIn:
+linkedin.com/in/craig-doc-savage
+
+...or YouTube:
+youtube.com/c/CraigSavage
+--->
+
+
+## Talk Introduction
+
+- Built with Quarto    
+    + Specifically, as a `revealjs` presentation    
+    + Similar to a **jupyter notebook**, but plain text    
+    + Successor to `rmarkdown`
+
+- Combination of text, images, code    
+    + Code available on GitHub    
+    + [https://github.com/SavageDoc/mapping_with_R](https://github.com/SavageDoc/mapping_with_R)
+
+# Data
+
+## Geography  {auto-animate="true"}
 
 ::: {.columns}
 
 ::: {.column width="47.5%"}
 
-Maps depend on an underlying geographic standard    
-- Government boundaries (e.g., Country, State)    
+* Maps depend on an underlying geographic standard    
+    - Government boundaries (e.g., Country, State)    
 
-- Electoral boundaries    
+   - Electoral boundaries    
 
-- Postcode    
+   - Postcode    
 
-- Statistical Areas    
+   - Statistical Areas    
+
+* Data are available from the GitHub package `wfmackey/absmapsdata`:
+[https://github.com/wfmackey/absmapsdata](https://github.com/wfmackey/absmapsdata)
+
+:::{.fragment}
+```{r echo=TRUE, eval=FALSE}
+options(timeout = 1000) # There's a bunch of data!
+remotes::install_github("wfmackey/absmapsdata")
+```
+:::
 
 :::
 
@@ -60,16 +95,16 @@ Maps depend on an underlying geographic standard
 
 :::
 
-## Data
+## Target: Payroll Jobs and Wages
 
 ![Weekly Payroll Jobs and Wages in Australia - Payroll Jobs Indexes by Sub-state regions, from the Australian Bureau of Statistics.](jobsDataSS.png)
 
 ## Data Wrangling
 
-Jobs and Wages data from the Australian Bureau of Statistics
+Jobs and Wages data from the Australian Bureau of Statistics - needs wrangling! 
 
 ```{r dataLoadSA4, echo=TRUE, cache=TRUE}
-#| code-line-numbers: "1-4|6|7|8|9-13|14-15|16-17|19-20|22-26|22|23-25"
+#| code-line-numbers: "1-4|6|7|8|9-13|14-15|16-17|19|21-25|21|22-25"
 excelFile <- './jobsOct2022.xlsx'
 rawData_SA4 <- read_excel( path=excelFile
                       , sheet='SA4'
@@ -81,20 +116,19 @@ sa4Data <- rawData_SA4 %>%
   separate( `Statistical Area Level 4`, into=c('sa4_code_2021','sa4_name_2021')
             , sep = '. '
             , extra='merge'
-            , fill='warn'
-            , convert = TRUE) %>%
+            , fill='warn' 
+            ) %>%
   pivot_longer( cols=-(1:3), names_to='Date', values_to='Index'
                 , names_transform=list( Date=as.numeric ) ) %>%
   mutate( Date=as.Date( Date, origin=ymd(18991230) )
           , Index=as.numeric( Index ) )
 
-sa4Geo <- absmapsdata::sa42021 %>% 
-  mutate( sa4_code_2021 = as.integer( sa4_code_2021 ) )
+sa4Geo <- absmapsdata::sa42021
 
 lastSA4Geo <- sa4Geo %>%
   inner_join( sa4Data %>% 
                 filter( Date == max( Date ) ) %>%
-                select( sa4_code_2021, Index, Date )
+                select( sa4_code_2021, Date, Index )
               , by='sa4_code_2021' )
 ```
 ## Wrangled Data
@@ -143,7 +177,7 @@ lastSA3Geo <- sa3Geo %>%
 
 # Static
 
-> Because sometimes, your stakeholders want PDF
+> Because sometimes, your stakeholders want PowerPoint
 
 ## Static maps with `ggplot`
 
@@ -151,7 +185,7 @@ Use of `geom_sf` with simple feature (**sf**) objects, such as those provided by
 
 ```{r staticMap, echo=TRUE}
 #| code-line-numbers: "1|2|3|4|5-6|8"
-#| output-location: column-fragment
+#| output-location: fragment
 staticMap <- ggplot( lastSA4Geo ) +
   geom_sf( aes( fill=Index ) ) +
   theme_void() +
@@ -162,7 +196,7 @@ staticMap <- ggplot( lastSA4Geo ) +
 staticMap
 ```
 
-# Dynamic {.incremental}
+# Dynamic 
 
 > Time for fun!
 
@@ -213,8 +247,8 @@ sa4Map %>% addProviderTiles( 'Esri.WorldImagery' )
 BUT - you should be able to run the prior code chunks (and then this one)
 to get the desired output. See the README file in the GitHub repo! -->
 
-```{r mapFunction, eval=FALSE, echo=TRUE, fig.keep='all'}
-#| code-line-numbers: "1-22|2|4-6|8-19|21|24-26|28|29|31-43|38"
+```{r mapFunction, eval=FALSE, echo=TRUE}
+#| code-line-numbers: "1-22|2|4-6|8-19|21|4-6,24-26|28|29|31-43|38"
 makeSA3Map <- function( sa4Code, sa3Data ){
   sa3_in_sa4 <- sa3Data %>% filter( sa4_code_2021 == sa4Code )
 
@@ -258,7 +292,6 @@ sa4MappedMap <- leaflet( data=lastSA4Geo ) %>%
              , pal=mapPal
              , values=c(95,115)
              )
-
 
 sa4MappedMap
 ```
@@ -305,7 +338,7 @@ Requirements:
 
 ## Caveat: Too efficient  {.scrollable}
 
-```{r manyMaps, echo=TRUE}
+```{r manyMaps, echo=TRUE, eval=TRUE}
 #| output-location: slide
 #| code-line-numbers: "1-4|6-17|19-20|21"
 fullSA4Geo <- sa4Geo %>%
@@ -345,7 +378,7 @@ aniPlot <- ggplot( fullSA4Geo ) +
 aniPlot %>% animate( fps=4 ) 
 ```
 
-# Finale {.incremental}
+# Finale
 
 > What does it mean to work in data visualisation?
 
@@ -360,3 +393,4 @@ aniPlot %>% animate( fps=4 )
 # Thank you!
 
 # Questions?
+
